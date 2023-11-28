@@ -1,0 +1,425 @@
+---
+title: "HNSCC"
+output: github_document
+---
+```{r load libraries, message=FALSE, include=FALSE}
+#library(GEOquery)
+gse<-getGEO("GSE139324",GSEMatrix = TRUE)
+metadata_GSE139324<-pData(phenoData(gse[[1]]))
+library(scCustomize)
+data_dir <-"GSE139324_RAW"
+#expression_matrices_GSE139324 <- Read10X_GEO(data_dir = data_dir)
+View(expression_matrices_GSE139324)
+metadata_GSE139324
+
+```
+# create HPV + and HPV - matrix by combining all cells 
+```{r} 
+hpvnegative_list<-expression_matrices_GSE139324[1:36]
+hpvpositive_list<-expression_matrices_GSE139324[37:52]
+
+# create hpv+ and Hpv - matrix separately 
+hpvneg_matrix<-hpvnegative_list[[1]]
+hpvpos_matrix<-hpvpositive_list[[1]]
+for (i in 2:length(hpvnegative_list)){
+     m2<-hpvnegative_list[[i]]
+     hpvneg_matrix<-cbind2(hpvneg_matrix,m2)
+}
+# repeat the same function to create the hpvpos_matrix 
+# file is stored in hpv-PBMC+TIL_combinedmatrix.RData and hpvpositiveHNSCC_matrix.RData
+pbmchpvpositive_matrix <-hpvpositive_list[[1]]
+TILpositive_matrix <- NULL
+
+# PBMC and TIL matrices for HPV + and HPV - HNSCC
+for (i in 2:length(hpvpositive_list)) {
+  if (grepl("PBMC", names(hpvpositive_list)[i])) {
+    m2 <-hpvpositive_list[[i]]
+    pbmchpvpositive_matrix<- cbind2(pbmchpvpositive_matrix, m2)
+  } else if (grepl("TIL", names(hpvnegative_list)[i])) {
+    # Combine TIL matrices
+    m2 <- hpvpositive_list[[i]]
+    if (is.null(TILpositive_matrix)) {
+      TILpositive_matrix <- m2
+    } else {
+      TILpositive_matrix <- cbind2(TILpositive_matrix, m2)
+    }
+  }
+}
+# repeat the same for pbmchpvnegative_matrix and TILnegative_matrix
+# these files are stored in hnscc_hpv-_separatematrix.RData and hnscc_hpv+_separatematrix.RData
+
+```
+
+# seurat analysis
+```{r} 
+library(dplyr)
+library(Seurat)
+library(patchwork)
+library(ggplot2)
+library(cowplot)
+#create separate seurat object for hpv+ and hpv - HNSCC
+hpv_pos<- CreateSeuratObject(counts =pbmchpvpositive_matrix, project = "hpv+HNSCC")
+hpv_pos@meta.data$orig.ident <- factor(rep("hpv+HNSCC", nrow(hpv_pos@meta.data)))
+Idents(hpv_pos) <-"hpv+HNSCC"
+
+hpv_neg<- CreateSeuratObject(counts = combined_matrix, project = "hpv-HNSCC")
+HNSCC <- merge(hpv_pos, y = hpv_neg, add.cell.ids = c("hpv+", "hpv-"), project = "HNSCC")
+
+HNSCC[["percent.mt"]] <- PercentageFeatureSet(HNSCC, pattern = "^MT-")
+## Visualize QC metrics as a violin plot
+VlnPlot(HNSCC, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, pt.size = 0.1) + NoLegend()
+
+##FeatureScatter is typically used to visualize feature-feature relationships, but can be used for anything calculated by the object, i.e. columns in object metadata, PC scores etc.
+plot1 <- FeatureScatter(HNSCC, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(HNSCC, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot1 + plot2
+
+HNSCC <- subset(HNSCC, subset = nFeature_RNA > 100 & nFeature_RNA < 5000 & percent.mt < 25)
+### Normalize data
+HNSCC<- NormalizeData(HNSCC, normalization.method = "LogNormalize", scale.factor = 10000)
+
+### Identification of highly variable features (feature selection)
+HNSCC <- FindVariableFeatures(HNSCC, selection.method = "vst", nfeatures = 2000)
+length(VariableFeatures(HNSCC))
+
+# Identify the 10 most highly variable genes
+top10 <- head(VariableFeatures(HNSCC), 10)
+top10
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(HNSCC)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot1 + plot2
+
+###Scaling the data
+HNSCC <- ScaleData(HNSCC, features = VariableFeatures(object = HNSCC))
+### perform PCA on the scaled data
+HNSCC <- RunPCA(HNSCC, features = VariableFeatures(object = HNSCC))
+
+
+### Seurat provides several useful ways of visualizing both cells and features that define the PCA, including VizDimReduction, DimPlot, and DimHeatmap
+# Examine and visualize PCA results a few different ways
+print(HNSCC[["pca"]], dims = 1:5, nfeatures = 5)
+VizDimLoadings(HNSCC, dims = 1:10, reduction = "pca")
+DimPlot(HNSCC, reduction = "pca")
+DimHeatmap(HNSCC, dims = 1, cells = 1000, balanced = TRUE)
+DimHeatmap(HNSCC, dims = 18:23, cells = 1000, balanced = TRUE)
+
+## we can observe an 'elbow' around PC9-10, suggesting that the majority of true signal is captured in the first 10 PCs.
+# https://hbctraining.github.io/scRNA-seq/lessons/elbow_plot_metric.html
+ElbowPlot(HNSCC)
+ElbowPlot(object = HNSCC, ndims = 25)
+
+# Determine percent of variation associated with each PC
+pct <- HNSCC[["pca"]]@stdev / sum(HNSCC[["pca"]]@stdev) * 100
+# Calculate cumulative percents for each PC
+cumu <- cumsum(pct)
+# Determine which PC exhibits cumulative percent greater than 90% and % variation associated with the PC as less than 5
+co1 <- which(cumu > 90 & pct < 5)[1]
+co1
+# Determine the difference between variation of PC and subsequent PC
+co2 <- sort(which((pct[1:length(pct) - 1] - pct[2:length(pct)]) > 0.1), decreasing = T)[1] + 1
+# last point where change of % of variation is more than 0.1%.
+co2
+# Minimum of the two calculation
+pcs <- min(co1, co2)
+pcs
+# Create a dataframe with values
+plot_df <- data.frame(pct = pct, 
+                      cumu = cumu, 
+                      rank = 1:length(pct))
+
+# Elbow plot to visualize 
+ggplot(plot_df, aes(cumu, pct, label = rank, color = rank > pcs)) + 
+  geom_text() + 
+  geom_vline(xintercept = 90, color = "grey") + 
+  geom_hline(yintercept = min(pct[pct > 5]), color = "grey") +
+  theme_bw()
+
+#cluster the cells
+HNSCC <- FindNeighbors(HNSCC, dims = 1:17)
+HNSCC<- FindClusters(HNSCC, resolution = 0.6)
+# Look at cluster IDs of the first 5 cells
+head(Idents(HNSCC), 5)
+HNSCC <- RunUMAP(HNSCC, dims = 1:17) # run UMAP
+plot1<-DimPlot(HNSCC, label = TRUE, reduction = "umap", raster=FALSE)
+# adding metadata information 
+metadata <- data.frame(
+  SampleID = colnames(HNSCC),
+  Strings<-strings,
+  HPV<-HNSCC@meta.data[["orig.ident"]],
+  Tissue = ifelse(strings %in% test, "Peripheral Blood", "Tumor Tissue"),
+  stringsAsFactors = FALSE
+)
+HNSCC@meta.data$Tissue<- metadata$Tissue
+HNSCC@meta.data$HPV<-metadata$HPV
+# highlight based on tissue 
+plot2<-DimPlot(HNSCC, reduction = "umap",group.by = "Tissue",raster=FALSE )
+# highlight based on HPV status 
+plot3<-DimPlot(HNSCC, reduction = "umap",group.by = "HPV",cols=c("brown", "green"),raster=FALSE )
+
+
+# adding the patient information to metadata 
+expression_matrix <- lapply(names(expression_matrices_GSE139324), function(name) {
+  # Remove the GSM pattern from the sample name
+  cleaned_name <- gsub("GSM\\d+_", "", name)
+  ExpressionMatrix = expression_matrices_GSE139324[[name]]
+  columns<-colnames(ExpressionMatrix)
+  # Create a new list with cleaned name and corresponding expression matrix
+  list(
+    SampleID = cleaned_name,
+    cell_names= columns
+  )
+})
+metadata$Patient <- NA
+
+for (i in seq_along(expression_matrix)) {
+  sample_id <- expression_matrix[[i]]$SampleID
+  cell_names <- expression_matrix[[i]]$cell_names
+  
+  # Check if the cell names are present in the metadata dataframe
+  matching_indices <- match(cell_names, metadata$Strings)
+  
+  # Add sample ID information to the metadata dataframe in a new column 'Patient'
+  metadata$Patient[matching_indices] <- sample_id
+}
+HNSCC@meta.data$Patient<-metadata$Patient
+save(metadata,file = "metadata.RData")
+
+# highlight based on patient information 
+plot4<-DimPlot(HNSCC, reduction = "umap",group.by = "Patient",raster=FALSE )
+save(HNSCC,file="HNSCC_seuratobj.RData")
+
+plot_grid(plot1,plot2,plot3,plot4, labels = c('A', 'B','C','D'),ncol = 2,nrow=2)
+
+cols=c("brown", "green","#FF68A1", "#00B8E7")
+test<-data.frame(c(table(HNSCC_seuratobj$orig.ident),table(HNSCC_seuratobj@meta.data[["Tissue"]])))
+barplot(test$freq, names.arg = rownames(test), col = cols,
+        main = "Number of Cells ",width = 0.2)
+
+```
+
+## Load libraries
+```{r load libraries, message=FALSE, include=FALSE}
+library(dplyr)
+library(Seurat)
+library(patchwork)
+library(ggplot2)
+library(cowplot)
+library(ggpubr) 
+library(tidyverse)
+```
+
+## Open CTRLPD1_final (see below for RDS with cellcycle regressed)
+```{r open CTRLPD1_final, include=FALSE}
+CTRLPD1 <- readRDS("D:/Documents/HongSheng/Dropbox/My_folder/Collaborations/Humanized_mouse/HuNIT/sc_results/HuNIT_CTRLPD1/CTRLPD1_final.rds")
+#CTRLPD1 <- readRDS("C:/Users/hquah/Dropbox/My_folder/Collaborations/Humanized_mouse/HuNIT/sc_results/HuNIT_CTRLPD1/CTRLPD1_final.rds")
+```
+
+```{r}
+DimPlot(CTRLPD1, reduction = "umap", label = TRUE, pt.size = 1.5, label.size = 6, group.by = "seurat_clusters")
+DimPlot(CTRLPD1, reduction = "umap", label = TRUE, pt.size = 0.5, label.size = 4, repel = TRUE)
+DimPlot(CTRLPD1, reduction = "umap", label = FALSE, pt.size = 0.25, split.by = "orig.ident")
+DimPlot(CTRLPD1, reduction = "umap", label = FALSE, pt.size = 0.25, group.by = "orig.ident")
+```
+
+## Plot UMAP CTRLPD1
+```{r Plot UMAP CTRLPD1}
+DimPlot(object = CTRLPD1, reduction = 'umap', label = TRUE, pt.size = 0.25, group.by = "orig.ident", repel = TRUE)
+DimPlot(object = CTRLPD1, reduction = 'umap', label = TRUE, pt.size = 0.5, repel = TRUE)
+```
+
+## Subset Epithelial and then draw UMAP
+```{r subset epithelial and draw UMAP}
+CTRLPD1.Epi <- subset(CTRLPD1, idents = c("Epithelial"))
+DimPlot(CTRLPD1.Epi, reduction = "umap", label = TRUE, pt.size = 1, repel = TRUE)
+DimPlot(CTRLPD1.Epi, reduction = "umap", label = TRUE, pt.size = 1, repel = TRUE, split.by = "orig.ident")
+FeaturePlot(CTRLPD1.Epi, features = c("PECAM1", "MMP2", "COL1A2", "ACTA2", "KRT17", "KRT7"))
+```
+## prep to regress cell cycle genes
+```{r https://satijalab.org/seurat/v3.2/cell_cycle_vignette.html}
+exp.mat <- read.table(file = "D:/Documents/HongSheng/Dropbox/My_folder/Collaborations/Humanized_mouse/HuNIT/sc_results/HuNIT_CTRLPD1/CD8/cell_cycle_vignette_files/regev_lab_cell_cycle_genes.txt", header = TRUE, as.is = TRUE, row.names = 1)
+# A list of cell cycle markers, from Tirosh et al, 2015, is loaded with Seurat.  We can segregate this list into markers of G2/M phase and markers of S phase
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
+write.table(g2m.genes, 'D:/Documents/HongSheng/Dropbox/My_folder/Collaborations/Humanized_mouse/HuNIT/sc_results/g2mgene.csv', sep=',', row.names = TRUE)
+
+#CTRLPD1.Epi <- CreateSeuratObject(counts = exp.mat)
+#CTRLPD1.Epi <- NormalizeData(CTRLPD1.Epi)
+#CTRLPD1.Epi <- FindVariableFeatures(CTRLPD1.Epi, selection.method = "vst")
+#CTRLPD1.Epi <- ScaleData(CTRLPD1.Epiv, features = rownames(CTRLPD1.Epi))
+CTRLPD1.Epi <- RunPCA(CTRLPD1.Epi, features = VariableFeatures(CTRLPD1.Epi), ndims.print = 6:10, nfeatures.print = 10)
+DimHeatmap(CTRLPD1.Epi, dims = c(8, 10))
+CTRLPD1.Epi <- CellCycleScoring(CTRLPD1.Epi, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+head(CTRLPD1.Epi[[]])
+ElbowPlot(CTRLPD1.Epi)
+ElbowPlot(object = CTRLPD1.Epi, ndims = 25)
+RidgePlot(CTRLPD1.Epi, features = c("PCNA", "TOP2A", "MCM6", "MKI67"), ncol = 2)
+DimPlot(CTRLPD1.Epi)
+```
+
+## regress cell cycle genes
+```{r further re-cluster epithelial cells, eval=FALSE, include=FALSE}
+CTRLPD1.Epi <- RunPCA(CTRLPD1.Epi, features = c(s.genes, g2m.genes))
+CTRLPD1.Epi <- ScaleData(CTRLPD1.Epi, vars.to.regress = c("S.Score", "G2M.Score"), features = rownames(CTRLPD1.Epi))
+CTRLPD1.Epi <- RunPCA(CTRLPD1.Epi, features = VariableFeatures(CTRLPD1.Epi), nfeatures.print = 10)
+CTRLPD1.Epi <- RunPCA(CTRLPD1.Epi, features = c(s.genes, g2m.genes))
+DimPlot(CTRLPD1.Epi)
+FeaturePlot(CTRLPD1.Epi, features = c("PCNA", "TOP2A", "MCM6", "MKI67")) # QC for cell cycle genes
+
+```
+
+## Further re-cluster epithelial cells
+```{r further re-cluster epithelial cells}
+ElbowPlot(CTRLPD1.Epi)
+ElbowPlot(object = CTRLPD1.Epi, ndims = 25)
+
+#cluster the cells
+CTRLPD1.Epi <- RunUMAP(CTRLPD1.Epi, dims = 1:9) #run UMAP
+CTRLPD1.Epi <- FindNeighbors(CTRLPD1.Epi, dims = 1:9)
+CTRLPD1.Epi <- FindClusters(CTRLPD1.Epi, resolution = 0.2)
+
+#head(Idents(CTRLPD1.Epi), 5) #Look at cluster IDs of the first 5 cells
+DimPlot(CTRLPD1.Epi, reduction = "umap", label = FALSE, pt.size = 1, repel = TRUE, split.by = NULL, group.by = "orig.ident")
+```
+
+## save or load RDS after cell cycle regression
+```{r}
+#saveRDS(CTRLPD1.Epi, file = "D:/Documents/HongSheng/Dropbox/My_folder/Collaborations/Humanized_mouse/HuNIT/sc_results/HuNIT_CTRLPD1/Epi/CTRLPD1Epi_regressedCC.rds") #C:/Users/hquah D:/Documents/HongSheng
+
+CTRLPD1.Epi <- readRDS("D:/Documents/HongSheng/Dropbox/My_folder/Collaborations/Humanized_mouse/HuNIT/sc_results/HuNIT_CTRLPD1/Epi/CTRLPD1Epi_regressedCC.rds") #C:/Users/hquah D:/Documents/HongSheng
+
+```
+
+# load gene lists
+```{r}
+non.epi <- c("PECAM1", "MMP2", "COL1A2", "ACTA2", "KRT17", "KRT7")
+premet.genes <- c("MDK", "STAT2", "AXL", "REL", "NFKB1", "SNAI1", "SNAI2", "AURKA", "AURKB", "RXRA", "TOP2A", "MKI67")
+```
+
+## Filter out remaining non-epithelial cells
+```{r subset all epithelial cells, fig.height=10, fig.width=10}
+FeaturePlot(CTRLPD1.Epi, features = non.epi)
+
+CTRLPD1.Epiv2 <- subset(CTRLPD1.Epi, subset = KRT7 > 0 & PECAM1 <= 0.1886)
+CTRLPD1.Epiv3 <- subset(CTRLPD1.Epiv2, subset = COL1A2 <= 0.1446)
+CTRLPD1.Epiv4 <- subset(CTRLPD1.Epiv3, subset = MMP2 <= 0.122)
+CTRLPD1.Epiv5 <- subset(CTRLPD1.Epiv4, subset = ACTA2 <= 0.1451)
+#DimPlot(CTRLPD1.Epiv2.1, reduction = "umap", label = TRUE, pt.size = 1, repel = TRUE, split.by = "orig.ident")
+FeaturePlot(CTRLPD1.Epiv5, features = non.epi)
+FeaturePlot(CTRLPD1.Epiv5, features = "MDK", pt.size = 1)
+
+DimPlot(CTRLPD1.Epiv5, reduction = "umap", label = FALSE, pt.size = 1, repel = TRUE, split.by = NULL, group.by = "seurat_clusters")
+DimPlot(CTRLPD1.Epiv5, reduction = "umap", label = FALSE, pt.size = 1, repel = TRUE, split.by = NULL, group.by = NULL)
+
+FeaturePlot(CTRLPD1.Epiv5, features = c("PCNA", "TOP2A", "MCM6", "MKI67"))
+```
+
+```{r to plot cycle cell on UMAP for comparison, eval=FALSE, include=FALSE}
+CTRLPD1.EpiCC <- RunPCA(CTRLPD1.Epi, features = c(s.genes, g2m.genes))
+CTRLPD1.EpiCC <- CellCycleScoring(CTRLPD1.Epi, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+DimPlot(CTRLPD1.EpiCC, reduction = "umap", label = FALSE, pt.size = 1, repel = TRUE, split.by = "orig.ident", group.by = "seurat_clusters")
+CTRLPD1.Epiv5CC <- RunPCA(CTRLPD1.Epiv5, features = c(s.genes, g2m.genes))
+CTRLPD1.Epiv5CC <- CellCycleScoring(CTRLPD1.Epiv5CC, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+DimPlot(CTRLPD1.Epiv5CC, reduction = "umap", label = FALSE, pt.size = 1, repel = TRUE, split.by = "orig.ident", group.by = "seurat_clusters")
+```
+
+```{r rename cluster, eval=FALSE, include=FALSE}
+### Assigning cell type identity to clusters
+#new.cluster.ids <- c("Epithelial_0", "Epithelial_1", "Epithelial_2", "Epithelial_3")
+#names(new.cluster.ids) <- levels(CTRLPD1.Epiv5)
+#CTRLPD1.Epiv5 <- RenameIdents(CTRLPD1.Epiv5, new.cluster.ids)
+#names(new.cluster.ids)
+#DimPlot(CTRLPD1.Epiv5, reduction = "umap", label = TRUE, pt.size = 1, repel = TRUE, split.by = "orig.ident")
+
+### to reset new.cluster.ids
+#Idents(CTRLPD1.Epiv5) <- "seurat_clusters"
+```
+
+## extract MDK negative epi cells
+```{r fig.height=8, fig.width=12}
+MDK.neg <- subset(CTRLPD1.Epiv5, subset = MDK > 0, invert = TRUE)
+
+MDKneg.plot <- DimPlot(MDK.neg, reduction = "umap", label = TRUE, pt.size = 2, label.size = 4, split.by = "orig.ident")
+MDKneg.plot + labs(title = "MDK- Epithelial")
+
+DimPlot(MDK.neg, reduction = "umap", label = TRUE, pt.size = 1, label.size = 4, split.by = "orig.ident")
+FeaturePlot(MDK.neg, features = c("MDK"), split.by = "orig.ident", pt.size = 2)
+FeaturePlot(MDK.neg, features = c("MDK", "STAT2", "AXL", "REL"), split.by = "orig.ident")
+FeaturePlot(MDK.neg, features = c("NFKB1", "SNAI1", "SNAI2", "AURKA"), split.by = "orig.ident")
+FeaturePlot(MDK.neg, features = c("AURKB", "RXRA"), split.by = "orig.ident")
+```
+
+## Extract MDK positive epithelial cells
+```{r extract MDK positive epithelial cells, height=8, fig.width=12}
+MDK.pos.CTRLPD1Epi <- subset(CTRLPD1.Epiv5, subset = MDK > 0)
+
+MDKplot2 <- DimPlot(MDK.pos.CTRLPD1Epi, reduction = "umap", label = TRUE, pt.size = 2, label.size = 4, split.by = "orig.ident")
+MDKplot2 + labs(title = "MDK+ malignant")
+```
+
+## Featureplots
+```{r }
+FeaturePlot(CTRLPD1.Epiv5, features = c("MDK", "STAT2", "AXL", "REL"), split.by = "orig.ident")
+FeaturePlot(CTRLPD1.Epiv5, features = c("NFKB1", "SNAI1", "SNAI2", "AURKA"), split.by = "orig.ident")
+FeaturePlot(CTRLPD1.Epiv5, features = c("AURKB", "RXRA", "TOP2A", "MKI67"), split.by = "orig.ident") 
+FeaturePlot(CTRLPD1.Epiv5, features = c("HLA-A", "HLA-B", "HLA-C", "HLA-E", "CD274"), split.by = "orig.ident") 
+```
+
+## Violin plots in all epithelial cells (group.by)
+```{r fig.height=12, fig.width=8}
+v1 <- VlnPlot(CTRLPD1.Epiv5, feature = c("MDK"), group.by = "orig.ident", y.max = 3.0) + stat_compare_means(method = "t.test", label = "p.format", label.x = 1.5, label.y = 2.9) #add "label =  "p.format"" to hide p value
+
+v2 <- VlnPlot(CTRLPD1.Epiv5, feature = c("STAT2"), group.by = "orig.ident", y.max = 2.0) + stat_compare_means(method = "t.test", label = "p.format", label.x = 1.5, label.y = 1.9)
+
+v3 <- VlnPlot(CTRLPD1.Epiv5, feature = c("AXL"), group.by = "orig.ident", y.max = 2.6) + stat_compare_means(method = "t.test", label = "p.format", label.x = 1.5, label.y = 2.45)
+
+v4 <- VlnPlot(CTRLPD1.Epiv5, feature = c("REL"), group.by = "orig.ident", y.max = 3.0) + stat_compare_means(method = "t.test", label = "p.format", label.x = 1.5, label.y = 2.9)
+
+v5 <- VlnPlot(CTRLPD1.Epiv5, feature = c("NFKB1"), group.by = "orig.ident", y.max = 2.8) + stat_compare_means(method = "t.test", label = "p.format", label.x = 1.5, label.y = 2.55)
+
+v6 <- VlnPlot(CTRLPD1.Epiv5, feature = c("SNAI1"), group.by = "orig.ident", y.max = 2.0) + stat_compare_means(method = "t.test", label = "p.format", label.x = 1.5, label.y = 1.95)
+
+v7 <- VlnPlot(CTRLPD1.Epiv5, feature = c("SNAI2"), group.by = "orig.ident", y.max = 3.0) + stat_compare_means(method = "t.test", label = "p.format", label.x = 1.5, label.y = 2.95)
+
+v8 <- VlnPlot(CTRLPD1.Epiv5, feature = c("AURKA"), group.by = "orig.ident", y.max = 2.5) + stat_compare_means(method = "t.test", label = "p.format", label.x = 1.5, label.y = 2.4)
+
+v9 <- VlnPlot(CTRLPD1.Epiv5, feature = c("AURKB"), group.by = "orig.ident", y.max = 2.6) + stat_compare_means(method = "t.test", label = "p.format", label.x = 1.5, label.y = 2.4)
+
+v10 <- VlnPlot(CTRLPD1.Epiv5, feature = c("RXRA"), group.by = "orig.ident", y.max = 2.0) + stat_compare_means(method = "t.test", label = "p.format", label.x = 1.5, label.y = 1.9)
+
+v11 <- VlnPlot(CTRLPD1.Epiv5, feature = c("TOP2A"), group.by = "orig.ident", y.max = 4.5) + stat_compare_means(method = "t.test", label = "p.format", label.x = 1.5, label.y = 4.0)
+
+v12 <- VlnPlot(CTRLPD1.Epiv5, feature = c("MKI67"), group.by = "orig.ident", y.max = 3.5) + stat_compare_means(method = "t.test", label = "p.format", label.x = 1.5, label.y = 3.4)
+
+# https://gotellilab.github.io/GotelliLabMeetingHacks/NickGotelli/ggplotPatchwork.html
+v1 + v2 + v3 + v4 + v5 + v6 + v7 + v8 + v9 + v10 + v11 + v12 + plot_layout(ncol=3, guides = "collect") + plot_annotation('All malignant cells', caption = NULL) & theme(legend.position = 'bottom')
+
+### label = "p.signif" (shows the significance levels); "p.format" (shows the formatted p value).
+```
+
+```{r fig.height=3, fig.width=3}
+# main figure
+v2 + v3 + v9 + v11  + plot_layout(ncol=2, guides = "collect") + plot_annotation('All malignant cells', caption = NULL) & theme(legend.position = 'bottom')
+
+```
+
+## write and save into a csv
+```{r eval=FALSE, include=FALSE}
+CTRLPD1.Epiv5.table <- table(Idents(CTRLPD1.Epiv5), CTRLPD1.Epiv5$orig.ident)
+MDK.pos.CTRLPD1Epi.table <- table(Idents(MDK.pos.CTRLPD1Epi), MDK.pos.CTRLPD1Epi$orig.ident)
+MDK.neg.table <- table(Idents(MDK.neg), MDK.neg$orig.ident)
+
+write.table(CTRLPD1.Epiv5.table, 'D:/Documents/HongSheng/Dropbox/My_folder/Collaborations/Humanized_mouse/HuNIT/sc_results/HuNIT_CTRLPD1/Epi/CTRLPD1_allEPI.csv', sep=',', row.names = TRUE)
+write.table(MDK.pos.CTRLPD1Epi.table, 'D:/Documents/HongSheng/Dropbox/My_folder/Collaborations/Humanized_mouse/HuNIT/sc_results/HuNIT_CTRLPD1/Epi/MDKpos_CPEpi.csv', sep=',', row.names = TRUE)
+write.table(MDK.neg.table, 'D:/Documents/HongSheng/Dropbox/My_folder/Collaborations/Humanized_mouse/HuNIT/sc_results/HuNIT_CTRLPD1/Epi/MDK.neg.csv', sep=',', row.names = TRUE)
+
+MDKposEpi.table <- FetchData(object = MDK.pos.CTRLPD1Epi, vars = c("MDK"))
+write.table(MDKposEpi.table, 'D:/Documents/HongSheng/Dropbox/My_folder/Collaborations/Humanized_mouse/HuNIT/sc_results/HuNIT_CTRLPD1/Epi/MDKposEpi.csv', sep=',', row.names = TRUE)
+
+#write.table(CTRLPD1.Epiv5.table, 'C:/Users/hquah/Dropbox/My_folder/Collaborations/Humanized_mouse/HuNIT/sc_results/HuNIT_CTRLPD1/Epi/CTRLPD1_allEPI.csv', sep=',', row.names = TRUE)
+#write.table(MDK.pos.CTRLPD1Epi.table, 'C:/Users/hquah/Dropbox/My_folder/Collaborations/Humanized_mouse/HuNIT/sc_results/HuNIT_CTRLPD1/Epi/MDKpos_CPEpi.csv', sep=',', row.names = TRUE)
+
+#C:/Users/hquah  D:/Documents/HongSheng
+
+```
