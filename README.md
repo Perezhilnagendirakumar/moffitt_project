@@ -13,6 +13,12 @@ The processed gene barcode matrices were collected from the GEO database (GSE139
 ![image](https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/b4f9c4c8-93da-4487-b0b6-e97c3c3d6377) ![image](https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/0eac7289-3de3-43b8-9a93-05edb3437a01)
 ![image](https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/a7eeeb27-4da1-4c13-81eb-668e8fd5fd30) <img width="245" alt="image" src="https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/c707832e-a946-4461-8d9f-71aa1a48d462">
 
+### Step 2 : Annotation of cell type using automated and ultrafast cell type clssification tool "SC type"
+To futher annotate the  23 clusters SCtype package was used . Sctype follows marker database and cell-type identification algorithm for accurate and unsupervised cell-type annotation.Most of the clusters were classified based on the marker information from Sctype platform. 
+![image](https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/15ca7fb4-7382-45e4-8fa1-8bd72ebcf681)
+
+### Step 3 : Exploring Rare cell type identification tools to spot the rare clusters 
+Rare ce
 
 
 
