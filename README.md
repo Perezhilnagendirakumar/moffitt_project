@@ -9,10 +9,9 @@ HNSCC occurs with an annual incidence of nearly 600,000 cases globally . HNSCC a
 
 ### Step 1 :ScRNA analysis using Seurat  
 The processed gene barcode matrices were collected from the GEO database (GSE139324) for HPV+ and HPV- PBMC and TIL https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE139324. Based on the metadata information collected from GEO separate matrices were created for HPV + HNSCC (33694 genes *35k cells) and HPV - HNSCC each comprising (33694 genes * 70k cells). Seurat analysis was performed on these matrices which includes preprocessing steps like QC , Normalization , Variable selection and PCA linear dimension reduction and the two seurat object was merged together which contains almost 36694 genes * 107738 cells and further unsupervised clustering was performed . A total of 23 clusters were obtained and cells were highlighted based on the metadata information like Tissue of origin , patient information, HPV status 
-![image](https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/c7b58ec7-0df5-411f-8d21-350b42e81a57)
-![image](https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/b4f9c4c8-93da-4487-b0b6-e97c3c3d6377)
-![image](https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/1aaefcdc-73ad-4a61-b326-f8c8672aa215)
-![image](https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/a7eeeb27-4da1-4c13-81eb-668e8fd5fd30)
+![image](https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/dd498f3c-16c4-45e8-9305-f9a174c1f740)
+![image](https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/b4f9c4c8-93da-4487-b0b6-e97c3c3d6377) ![image](https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/0eac7289-3de3-43b8-9a93-05edb3437a01)
+![image](https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/a7eeeb27-4da1-4c13-81eb-668e8fd5fd30) <img width="245" alt="image" src="https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/c707832e-a946-4461-8d9f-71aa1a48d462">
 
 
 
