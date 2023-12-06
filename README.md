@@ -14,7 +14,7 @@ The processed gene barcode matrices were collected from the GEO database (GSE139
 
 
 ### Step 2 : Annotation of cell type using automated and ultrafast cell type clssification tool "SC type"
-To futher annotate the  23 clusters SCtype package was used . Sctype follows marker database and cell-type identification algorithm for accurate and unsupervised cell-type annotation.Most of the clusters were classified based on the marker information from Sctype platform. 
+Initially, Sctype was performed on the entire dataset to identify the major trends, and to identify the major immune lineages. Sctype follows marker database and cell-type identification algorithm for accurate and unsupervised cell-type annotation.Most of the clusters were classified based on the marker information from Sctype platform. 
 
 ![image](https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/15ca7fb4-7382-45e4-8fa1-8bd72ebcf681)
 
@@ -27,8 +27,7 @@ Rare cells represent minor cell types in an organism. Despite low abundance, rar
 Fire, Gapclust, and Giniclust identified 2500, 95, and 500 rare cells, respectively. These rare cells, pinpointed by each method, were visually highlighted in UMAP plots. Subsequently, the rare cell clusters were isolated and subjected to a re-clustering analysis to examine their distinct transcriptional states.
 
 ![image](https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/eabd68ba-7b11-42e7-93f7-e3aa548b7ff5)
-![image](https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/8b404cdf-6b73-4350-9ddf-1636c4ab3b70)
-
+![image](https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/4f1f5fbc-c4f5-4b3b-bcde-9835a5b47be4)
 
 ### Step 5 : Curation of Marker database from clustermole package
 In our efforts to streamline the assignment of cell type labels to clusters, particularly focusing on the representation of rare cells or subcellular types, we undertook the task of identifying a marker database rich in information about lowly expressed markers. Recognizing that such markers are crucial for characterizing rare cell populations, we utilized the clustermole package, which provided access to a comprehensive array of eight distinct marker databases, including ARCHS4, CellMarker, MSigDB, PanglaoDB, SaVanT, TISSUES, and xCell. Our emphasis in this selection process was on databases that prioritize markers with lower expression levels, a feature essential for accurately identifying and characterizing rare cell types within our study, as informed by insights derived from Bulk RNA-Seq data from the recount-GTEX project.
@@ -44,8 +43,24 @@ In our efforts to streamline the assignment of cell type labels to clusters, par
 <img width="865" alt="image" src="https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/c4e98efd-5c31-4c55-b7fb-f4b5281839ed">
 <img width="906" alt="image" src="https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/e0585234-b7dc-46a3-b3f6-98c27b08b8d9">
 
+Based on the results of the density plot and interpretation on table the preferred database is ranked 
 
+1.xCell
+2.CellMarker
+3.MSigDB
+4.SaVanT
 
+### Step 6: Annotating the cell types based on marker database and literature survey 
+<img width="243" alt="image" src="https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/1e1f48a6-1c23-49ea-a632-856c3916b096">
+
+### Step 7: Optimizing Rare Cell Tools: Fine-Tuning Default Cutoffs for Accurate Rare Cell Percentage Assessment
+GiniClust2 and FiRE employ a threshold-based approach for selecting informative genes contributing to rare cell populations. GiniClust2 utilizes Norm.Gini.cutoff (set to 1) and Gini.pvalue_cutoff (0.0001) to identify high Gini genes, while FiRE adopts an interquartile range (IQR) based approach (75th percentile - 25th percentile) on the rareness score to pinpoint rare cells. Instead of relying on a cutoff-based approach, genes were ordered based on these values from low to high, and the tool's performance in predicting rare cells was assessed within the range of top 100 to top 5000 genes specifically for HNSCC. PBMC 68k served as a control for performance evaluation.
+
+![image](https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/610163a2-f0a4-486a-85d5-81bae392929d)
+![image](https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/f29061e5-2073-4172-92ee-1e3f398adefc)
+
+### Step : Exploring Gene-PC Relationships: 
+The analysis included monitoring variation at the principal component (PC) level for each gene. This was achieved through correlation analyses between individual PCs and specific gene ranges. This act as a guideline to choose appropriate pcs for downstream analysis . the results are attached in the name of correlation analysis1 to 2000_giniclust and correlation analysis1 to 2000_fire in results folder 
 
 
 
