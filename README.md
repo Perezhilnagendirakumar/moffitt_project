@@ -59,7 +59,7 @@ GiniClust2 and FiRE employ a threshold-based approach for selecting informative 
 ![image](https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/610163a2-f0a4-486a-85d5-81bae392929d)
 ![image](https://github.com/Perezhilnagendirakumar/rare_cell_exploration/assets/97453603/f29061e5-2073-4172-92ee-1e3f398adefc)
 
-### Step : Exploring Gene-PC Relationships: 
+### Step 8 : Exploring Gene-PC Relationships: 
 The analysis included monitoring variation at the principal component (PC) level for each gene. This was achieved through correlation analyses between individual PCs and specific gene ranges. This act as a guideline to choose appropriate pcs for downstream analysis . the results are attached in the name of correlation analysis1 to 2000_giniclust and correlation analysis1 to 2000_fire in results folder 
 
 
